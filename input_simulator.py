@@ -1,11 +1,17 @@
 # input_simulator.py
-# 输入模拟模块：消息前后发送 Enter，统一大厅和对局窗口逻辑，逐字符输入，防止乱码
+# 输入模拟模块：使用 SendInput 模拟键盘输入，适配大厅和对局窗口
 
 import ctypes
-from ctypes import wintypes
 import time
+from ctypes import wintypes
 import win32gui
 import win32con
+from pip._internal.utils import logging
+import pydirectinput
+import win32gui
+import ctypes
+import time
+import logging
 
 # Windows API 结构定义
 PUL = ctypes.POINTER(ctypes.c_ulong)
@@ -51,90 +57,109 @@ KEYEVENTF_KEYDOWN = 0x0000
 KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_UNICODE = 0x0004
 VK_RETURN = 0x0D
-VK_SHIFT = 0x10
-VK_CONTROL = 0x11
-VK_MENU = 0x12
-VK_LWIN = 0x5B
+VK_SPACE = 0x20  # 空格键的虚拟键码
 
 
 class InputSimulator:
-    # 构造函数：初始化日志回调
     def __init__(self, log_callback):
         self.log_callback = log_callback
-        self.user32 = ctypes.WinDLL('user32')
-        self.user32.SendInput.argtypes = (wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int)
+        self.user32 = ctypes.WinDLL("user32")
+        # 定义必要的 ctypes 结构体
+        self.INPUT_KEYBOARD = 1
+        self.KEYEVENTF_UNICODE = 0x0004
+        self.KEYEVENTF_KEYUP = 0x0002
 
-    # 模拟单个按键
-    def send_key(self, key_code, is_unicode=False, key_up=False):
-        input_struct = INPUT()
-        input_struct.type = INPUT_KEYBOARD
-        input_struct.ki.wVk = key_code if not is_unicode else 0
-        input_struct.ki.wScan = key_code if is_unicode else 0
-        input_struct.ki.dwFlags = KEYEVENTF_UNICODE if is_unicode else (
-            KEYEVENTF_KEYUP if key_up else KEYEVENTF_KEYDOWN)
-        input_struct.ki.time = 0
-        input_struct.ki.dwExtraInfo = None
-        self.user32.SendInput(1, ctypes.byref(input_struct), ctypes.sizeof(input_struct))
-        self.log_callback(
-            f"模拟按键: {hex(key_code)}, {'释放' if key_up else '按下'}, {'Unicode' if is_unicode else 'Virtual Key'}")
-        time.sleep(0.3 if hasattr(self, 'is_game') and self.is_game else 0.05)
+        class KEYBDINPUT(ctypes.Structure):
+            _fields_ = [("wVk", ctypes.c_ushort),
+                        ("wScan", ctypes.c_ushort),
+                        ("dwFlags", ctypes.c_ulong),
+                        ("time", ctypes.c_ulong),
+                        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
 
-    # 清理输入队列
-    def clear_input_queue(self):
-        for key in [VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN]:
-            self.send_key(key, key_up=True)
-            self.log_callback(f"清理输入队列: 释放按键 {hex(key)}")
-        time.sleep(0.15)
+        class HARDWAREINPUT(ctypes.Structure):
+            _fields_ = [("uMsg", ctypes.c_ulong),
+                        ("wParamL", ctypes.c_short),
+                        ("wParamH", ctypes.c_ushort)]
 
-    # 发送消息，统一大厅和对局窗口逻辑
+        class MOUSEINPUT(ctypes.Structure):
+            _fields_ = [("dx", ctypes.c_long),
+                        ("dy", ctypes.c_long),
+                        ("mouseData", ctypes.c_ulong),
+                        ("dwFlags", ctypes.c_ulong),
+                        ("time", ctypes.c_ulong),
+                        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+
+        class Union_Input(ctypes.Union):
+            _fields_ = [("ki", KEYBDINPUT),
+                        ("mi", MOUSEINPUT),
+                        ("hi", HARDWAREINPUT)]
+
+        class INPUT(ctypes.Structure):
+            _fields_ = [("type", ctypes.c_ulong),
+                        ("union_input", Union_Input)]
+
+        # 将这些定义绑定到 self
+        self.INPUT = INPUT
+        self.KEYBDINPUT = KEYBDINPUT
+        self.Union_Input = Union_Input
+
     def send_message(self, hwnd, message, is_game):
+        """
+        发送消息，区分大厅和对局窗口
+        本次修改：将硬编码的过长延迟调整为更短、更合理的间隔，以提高发送速度和稳定性。
+        :param hwnd: 目标窗口句柄
+        :param message: 要发送的消息内容
+        :param is_game: 是否为对局窗口
+        """
         try:
             start_time = time.time()
-            self.is_game = is_game
-            title = win32gui.GetWindowText(hwnd)
+            self.log_callback("尝试发送消息...")
 
             # 确保窗口焦点
-            if win32gui.GetForegroundWindow() != hwnd:
+            foreground_hwnd = win32gui.GetForegroundWindow()
+            if foreground_hwnd != hwnd:
+                self.log_callback("重新设置窗口焦点")
                 win32gui.SetForegroundWindow(hwnd)
-                self.log_callback(f"设置焦点: 句柄 {hwnd}, 标题 {title}")
-                time.sleep(1.8)
+                # 增加短暂的等待时间，确保窗口焦点完全切换
+                time.sleep(0.05)
 
-            # 清理输入队列
-            self.clear_input_queue()
+            # 激活聊天窗口，统一使用回车键。使用 pydirectinput 模拟按键，对游戏兼容性更好
+            self.log_callback("尝试激活聊天框...")
+            pydirectinput.press('enter')
+            # 增加短暂的等待时间，确保聊天框弹出
+            time.sleep(0.05)
+            self.log_callback("已激活聊天框")
 
-            # 发送 Enter 打开聊天框
-            self.log_callback(f"{'对局窗口' if is_game else '大厅窗口'}：发送 Enter 打开聊天框")
-            self.send_key(VK_RETURN, key_up=False)
-            self.send_key(VK_RETURN, key_up=True)
-            time.sleep(0.5)
-            # 验证聊天框
-            test_char = ord('/')
-            self.send_key(test_char, is_unicode=True, key_up=False)
-            self.send_key(test_char, is_unicode=True, key_up=True)
-            self.send_key(0x08, key_up=False)  # Backspace
-            self.send_key(0x08, key_up=True)
-            self.log_callback("聊天框验证通过")
-
-            # 逐字符输入消息
+            # 保留你原始的 SendInput 逻辑来发送完整消息
+            self.log_callback("准备发送完整消息...")
+            inputs = []
             for char in message:
-                unicode_val = ord(char)
-                self.send_key(unicode_val, is_unicode=True, key_up=False)
-                self.send_key(unicode_val, is_unicode=True, key_up=True)
-                self.log_callback(f"输入字符: {char} (Unicode: {hex(unicode_val)})")
+                down_input = self.INPUT(type=self.INPUT_KEYBOARD, union_input=self.Union_Input(
+                    ki=self.KEYBDINPUT(wScan=ord(char), dwFlags=self.KEYEVENTF_UNICODE)))
+                inputs.append(down_input)
 
-            # 发送 Enter 提交消息
-            self.log_callback("发送 Enter 提交消息")
-            self.send_key(VK_RETURN, key_up=False)
-            self.send_key(VK_RETURN, key_up=True)
+                up_input = self.INPUT(type=self.INPUT_KEYBOARD, union_input=self.Union_Input(
+                    ki=self.KEYBDINPUT(wScan=ord(char), dwFlags=self.KEYEVENTF_UNICODE | self.KEYEVENTF_KEYUP)))
+                inputs.append(up_input)
 
-            # 清理输入队列
-            self.clear_input_queue()
+            if inputs:
+                inputs_array = (self.INPUT * len(inputs))(*inputs)
+                self.user32.SendInput(len(inputs), inputs_array, ctypes.sizeof(self.INPUT))
+                self.log_callback(f"消息 '{message}' 已发送")
+            else:
+                self.log_callback("消息为空，未发送")
+
+            self.log_callback("输入完成")
+            # 增加短暂的等待时间，确保输入被完全处理
+            time.sleep(0.05)
+
+            # 再次使用 pydirectinput 模拟回车键以发送消息
+            pydirectinput.press('enter')
+            self.log_callback("已发送消息")
 
             end_time = time.time()
-            self.log_message(f"消息发送: {message}, 耗时: {end_time - start_time:.3f}秒")
-        except Exception as e:
-            self.log_callback(f"发送失败: 句柄 {hwnd}, 错误: {str(e)}")
+            self.log_callback(f"消息发送耗时: {end_time - start_time:.3f}秒")
 
-    # 日志记录
-    def log_message(self, message):
-        self.log_callback(message)
+        except Exception as e:
+            self.log_callback(f"输入模拟失败: {str(e)}")
+            logging.exception("在send_message方法中发生异常")
