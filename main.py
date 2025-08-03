@@ -6,33 +6,40 @@ import keyboard
 from PyQt6.QtGui import QIcon, QTextCursor, QAction
 from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QTextEdit, QVBoxLayout, QWidget, QComboBox, \
     QCheckBox, QHBoxLayout, QInputDialog, QLabel, QSizePolicy
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QPoint
 from window_manager import WindowManager
 from input_simulator import InputSimulator
 from config_manager import ConfigManager
+from custom_title_bar import CustomTitleBar  # 新增：导入自定义标题栏类
 import threading
 import ctypes
 import logging
 import webbrowser
+import atexit
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class MainWindow(QMainWindow):
+    """
+    应用程序主窗口类，包含 GUI 界面、热键处理和消息发送逻辑。
+    """
     # 定义一个 pyqtSignal，用于在后台线程中安全地更新GUI
     log_signal = pyqtSignal(str)
 
     # 构造函数：初始化 GUI 和核心组件
     def __init__(self):
+
         """
         初始化主窗口，设置窗口标题、大小，并初始化配置管理器、窗口管理器和输入模拟器。
         同时加载消息列表，初始化UI，设置热键，并检查管理员权限。
         """
         super().__init__()
+
+        # 移除默认标题栏
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setWindowTitle("LOL友好交流器")
-        # 修改：移除固定窗口大小，改为设置初始大小
-        # 将窗口大小设置为固定
         self.setFixedSize(300, 270)
 
         # 将信号连接到槽函数
@@ -115,12 +122,17 @@ class MainWindow(QMainWindow):
         self.message_group_index = 0
         self.message_line_index = 0
         self.line_status_label = None
+        self.sending_lock = threading.Lock()
 
+        # 初始化UI，包括自定义标题栏
         self.init_ui()
 
         # 调用核心逻辑，但不再产生日志
         self.check_admin()
         self.setup_hotkey()
+
+        # 使用 atexit 注册清理函数，确保程序退出时清理热键
+        atexit.register(self.cleanup_hotkeys)
 
         # 初始时，如果消息列表不为空，默认选中并显示第一条
         if self.messages:
@@ -132,55 +144,33 @@ class MainWindow(QMainWindow):
         self.log_display.insertHtml(startup_log_html)
         self.log_display.verticalScrollBar().setValue(0)
 
-    def get_startup_log_html(self):
-        """
-        生成启动时的所有日志信息的HTML字符串。
-        """
-        is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
-        admin_log = "已以管理员身份运行。" if is_admin else "警告：未以管理员身份运行，热键可能无法在游戏内工作。"
+    # --------------------------- 新增/修改部分开始 -----------------------------
 
-        startup_guide_html = (
-            "<span style='color:red;'>软件用管理员身份打开</span><br>"
-            "<b><span style='color:red;'>第一次使用请阅读：</span></b><br>"
-            "<b><span style='color:blue;'>== 软件使用指南 ==</span></b><br>"
-            "<b>F2</b>: 发送选中消息组（对局中无需打开聊天框直接按F2）。<br>"
-            "<b>F12</b>: 切换全局聊天模式。<br>"
-            "若热键无效，请以管理员身份运行。<br>"
-        )
-
-        selected_message_note = "无消息"
-        if self.messages:
-            selected_message_note = self.messages[0].get('note', f"消息组 1")
-
-        log_html = (
-            f"<span style='color:green;'>{admin_log}</span><br>"
-            f"<span style='color:blue;'>热键F2和F12已设置。</span><br>"
-            f"<span>已选择消息组: 1 ({selected_message_note})</span><br>"
-            f"{startup_guide_html}"
-        )
-        return log_html
-
-    def show_startup_guide(self):
-        """
-        此函数已被修改，不再写入日志，因为启动日志已在__init__中硬编码。
-        """
-        pass
-
-    # 初始化 GUI 界面
     def init_ui(self):
         """
-        初始化 GUI 界面，优化布局。
-        - 增加下拉框的高度。
-        - 减小预览区的高度和宽度。
-        - 按钮高度增加并增加上下间距。
-        - 调整“当前选中”标签和“日志”按钮的布局，使“当前选中”位于左下，日志按钮位于右下。
+        初始化 GUI 界面，使用自定义标题栏。
         """
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        # 创建一个主容器Widget，作为中央窗口部件
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
 
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setSpacing(5)
-        main_layout.setContentsMargins(10, 10, 10, 10)
+        # 创建一个主布局，用于放置标题栏和内容区域
+        main_layout = QVBoxLayout(main_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # 添加自定义标题栏
+        self.title_bar = CustomTitleBar(self)
+        main_layout.addWidget(self.title_bar)
+
+        # 创建一个内容区域的Widget，用于放置所有旧有的UI元素
+        content_widget = QWidget()
+        main_layout.addWidget(content_widget)
+
+        # 创建一个垂直布局来容纳所有的UI元素（除了标题栏）
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setSpacing(5)
+        content_layout.setContentsMargins(10, 10, 10, 10)
 
         # 创建一个新的水平布局来容纳 GitHub 按钮和消息选择下拉框
         top_controls_layout = QHBoxLayout()
@@ -192,29 +182,7 @@ class MainWindow(QMainWindow):
         self.message_selector.setMinimumHeight(30)
         top_controls_layout.addWidget(self.message_selector, 1)
 
-        # GitHub 按钮
-        self.github_button = QPushButton()
-        self.github_button.setFixedSize(QSize(25, 25))
-        self.github_button.setIcon(QIcon("github_icon.ico"))
-        self.github_button.setToolTip("访问我的GitHub")
-        self.github_button.clicked.connect(self.open_github_link)
-        self.github_button.setStyleSheet("""
-            QPushButton {
-                border: 0px;
-                border-radius: 5px;
-                background-color: transparent;
-                padding: 0;
-            }
-            QPushButton:hover {
-                background-color: #e6e6e6;
-            }
-            QPushButton:pressed {
-                background-color: #dcdcdc;
-            }
-        """)
-        top_controls_layout.addWidget(self.github_button)
-
-        main_layout.addLayout(top_controls_layout)
+        content_layout.addLayout(top_controls_layout)
 
         # 备注和勾选框布局
         note_checkbox_layout = QHBoxLayout()
@@ -235,7 +203,7 @@ class MainWindow(QMainWindow):
             "全体消息 " + ("已勾选" if self.all_chat_checkbox.isChecked() else "已取消勾选")
         ))
 
-        main_layout.addLayout(note_checkbox_layout)
+        content_layout.addLayout(note_checkbox_layout)
 
         # 预览区域和按钮区域
         preview_and_button_layout = QHBoxLayout()
@@ -245,14 +213,14 @@ class MainWindow(QMainWindow):
         # 左侧消息预览区
         self.message_input = QTextEdit()
         self.message_input.setPlaceholderText("预览/编辑选中消息...")
-        self.message_input.setMinimumHeight(40)  # 减小预览区的最小高度
-        self.message_input.setMaximumWidth(250)  # 减小预览区的最大宽度
+        self.message_input.setMinimumHeight(40)
+        self.message_input.setMaximumWidth(250)
         self.message_input.setReadOnly(True)
         preview_and_button_layout.addWidget(self.message_input, 1)
 
         # 右侧按钮布局
         button_layout = QVBoxLayout()
-        button_layout.setSpacing(10)  # 增加按钮之间的垂直间距
+        button_layout.setSpacing(10)
 
         # 使用 sizePolicy 来增加按钮高度
         size_policy = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
@@ -298,22 +266,15 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.delete_button)
 
         preview_and_button_layout.addLayout(button_layout)
+        content_layout.addLayout(preview_and_button_layout)
 
-        main_layout.addLayout(preview_and_button_layout)
-
-        # 新增：用于日志显示区域的垂直布局
-        log_section_layout = QVBoxLayout()
-        log_section_layout.setContentsMargins(0, 0, 0, 0)
-        log_section_layout.setSpacing(5)
-
-        # 创建一个新的水平布局来容纳日志按钮和状态标签，但现在将它们分开
+        # 状态标签和日志按钮布局
         bottom_controls_layout = QHBoxLayout()
-
+        bottom_controls_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_controls_layout.setSpacing(5)
         # 消息发送状态标签
         self.line_status_label = QLabel("当前选中：无消息")
-        # 将标签对齐到左侧，并与预览区底部对齐
         self.line_status_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        # 使用 QSizePolicy 来控制其在布局中的行为，让它占据左侧空间
         label_policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.line_status_label.setSizePolicy(label_policy)
         bottom_controls_layout.addWidget(self.line_status_label)
@@ -321,37 +282,66 @@ class MainWindow(QMainWindow):
         # 增加一个弹性空间，将日志按钮推到右边
         bottom_controls_layout.addStretch(1)
 
-        # 日志切换按钮
-        self.log_toggle_button = QPushButton("日志▼")
+        # 原始的日志切换按钮，现在只用于打开日志
+        self.log_toggle_button = QPushButton("使用指南/日志▼")
         self.log_toggle_button.setStyleSheet("""
             QPushButton {
                 border: 0px;
                 border-radius: 5px;
                 background-color: transparent;
-                text-align: right; /* 将按钮文本对齐到右侧 */
+                text-align: right;
                 padding: 0;
             }
             QPushButton:hover {
-                color: #0078d4; /* 悬停时颜色变化 */
+                color: #0078d4;
             }
         """)
         self.log_toggle_button.clicked.connect(self.toggle_log_display)
         bottom_controls_layout.addWidget(self.log_toggle_button)
 
-        # 将这个新的水平布局添加到主布局
-        main_layout.addLayout(bottom_controls_layout)
+        content_layout.addLayout(bottom_controls_layout)
 
-        # 日志显示
+        # ==================== 日志叠加层部分修改 ====================
+        # 创建一个日志显示区作为叠加层
+        self.log_overlay_widget = QWidget(self)
+        self.log_overlay_widget.setStyleSheet(
+            "background-color: white; border-top: 1px solid #c4c4c4; border-radius: 5px;")
+        log_overlay_layout = QVBoxLayout(self.log_overlay_widget)
+        log_overlay_layout.setContentsMargins(5, 5, 5, 5)
+
+        # 新增：用于关闭日志的按钮，位于叠加层内部
+        self.close_log_button = QPushButton("日志▲")
+        self.close_log_button.setStyleSheet("""
+            QPushButton {
+                border: 0px;
+                border-radius: 5px;
+                background-color: transparent;
+                text-align: right;
+                padding: 0;
+            }
+            QPushButton:hover {
+                color: #0078d4;
+            }
+        """)
+        self.close_log_button.clicked.connect(self.toggle_log_display)
+
+        log_overlay_header_layout = QHBoxLayout()
+        log_overlay_header_layout.addStretch()
+        log_overlay_header_layout.addWidget(self.close_log_button)
+
+        log_overlay_layout.addLayout(log_overlay_header_layout)
+
         self.log_display = QTextEdit()
         self.log_display.setReadOnly(True)
-        # 初始时设置日志区高度为0，使其默认隐藏
-        self.log_display.setMaximumHeight(0)
-        main_layout.addWidget(self.log_display)
+        self.log_display.setFontPointSize(8)
+        self.log_display.setStyleSheet("background-color: #f0f0f0; border: none; border-radius: 5px;")
+        log_overlay_layout.addWidget(self.log_display)
+        self.log_overlay_widget.hide()  # 初始时隐藏叠加层
+        # ==================== 日志叠加层部分修改结束 ====================
 
-        # 将日志光标设置到最开始，避免打开软件时在中间
-        self.log_display.moveCursor(QTextCursor.MoveOperation.Start)
+        # 设置主布局的伸缩因子，确保内容区域占据剩余所有空间
+        main_layout.setStretch(1, 1)
 
-        # UI元素创建完成后再更新选择器，确保所有控件都已存在
         self.update_message_selector()
 
         self.message_selector.currentIndexChanged.connect(self.display_selected_message)
@@ -360,30 +350,63 @@ class MainWindow(QMainWindow):
 
         self.update_button_states()
 
-    # 修改：用于切换日志显示区可见性的方法
+    # --------------------------- 新增/修改部分结束 -----------------------------
+
+    def cleanup_hotkeys(self):
+        """
+        程序退出时清理所有热键。
+        """
+        keyboard.unhook_all()
+        logging.info("程序退出，已清除所有热键。")
+        self.log_signal.emit("程序退出，已清除所有热键。")
+
+    def get_startup_log_html(self):
+        """
+        生成启动时的所有日志信息的HTML字符串。
+        """
+        is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+        admin_log = "已以管理员身份运行。" if is_admin else "警告：未以管理员身份运行，热键可能无法在游戏内工作。"
+
+        startup_guide_html = (
+            "<span style='color:red;'>软件用管理员身份打开</span><br>"
+            "<b><span style='color:red;'>第一次使用请阅读：</span></b><br>"
+            "<b><span style='color:blue;'>== 软件使用指南 ==</span></b><br>"
+            "<b>F2</b>: 发送选中消息组（对局中无需打开聊天框直接按F2）。<br>"
+            "<b>F12</b>: 切换全局聊天模式。<br>"
+            "若热键无效，请以管理员身份运行。<br>"
+        )
+
+        selected_message_note = "无消息"
+        if self.messages:
+            selected_message_note = self.messages[0].get('note', f"消息组 1")
+
+        log_html = (
+            f"<span style='color:green;'>{admin_log}</span><br>"
+            f"<span style='color:blue;'>热键F2和F12已设置。</span><br>"
+            f"<span>已选择消息组: 1 ({selected_message_note})</span><br>"
+            f"{startup_guide_html}"
+        )
+        return log_html
+
+
+    # main.py
+
     def toggle_log_display(self):
         """
-        切换日志显示区的可见性，并更新按钮文本。
+        切换日志显示区叠加层的可见性。
         """
-        if self.log_display.maximumHeight() > 0:
-            # 当前已展开，将其收起
-            self.log_display.setMaximumHeight(0)
-            self.log_toggle_button.setText("日志▼")
+        if self.log_overlay_widget.isHidden():
+            # 显示叠加层
+            self.log_overlay_widget.setGeometry(
+                0, self.height() - 150,
+                self.width(), 150
+            )
+            self.log_overlay_widget.show()
+            # 确保日志叠加层始终在所有控件的最上层
+            self.log_overlay_widget.raise_()
         else:
-            # 当前已收起，将其展开
-            self.log_display.setMaximumHeight(150)  # 设置展开后的高度
-            self.log_toggle_button.setText("日志▲")
-
-    def open_github_link(self):
-        """
-        槽函数：打开指定的GitHub链接。
-        """
-        github_url = "https://github.com/rhj-flash/LOL_Chat_Tool"
-        try:
-            webbrowser.open(github_url)
-            self.log_signal.emit(f"已打开GitHub链接: {github_url}")
-        except Exception as e:
-            self.log_signal.emit(f"无法打开GitHub链接: {str(e)}")
+            # 隐藏叠加层
+            self.log_overlay_widget.hide()
 
     def reset_message_line_index(self):
         """
@@ -407,11 +430,10 @@ class MainWindow(QMainWindow):
 
     def check_admin(self):
         """
-        检查程序是否以管理员权限运行。此函数现在只执行检查逻辑，不再产生日志。
+        检查程序是否以管理员权限运行。
         """
         try:
             is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
-            # 这里可以保留日志记录到文件，但不再写入GUI
             logging.info("已以管理员身份运行。" if is_admin else "警告：未以管理员身份运行，热键可能无法在游戏内工作。")
         except Exception as e:
             logging.exception(f"检查管理员权限失败: {e}")
@@ -542,6 +564,11 @@ class MainWindow(QMainWindow):
         发送消息核心逻辑，所有异常都在此捕获，以保证程序不退出。
         修改为每次调用只发送当前行的内容，然后移动到下一行。
         """
+        # 尝试获取锁，如果无法获取，说明上一次发送还在进行，则直接退出
+        if not self.sending_lock.acquire(blocking=False):
+            self.log_signal.emit("正在发送中，忽略本次热键请求。")
+            return
+
         try:
             self.log_signal.emit("开始发送消息...")
             hwnd, is_game = self.window_manager.find_lol_window()
@@ -593,6 +620,7 @@ class MainWindow(QMainWindow):
             self.log_signal.emit(f"发送消息失败，发生异常: {str(e)}")
             logging.exception("发送消息时发生未处理的异常")
         finally:
+            self.sending_lock.release()
             self.log_signal.emit("消息发送过程结束。")
 
     def start_send_thread(self):
@@ -603,13 +631,6 @@ class MainWindow(QMainWindow):
         thread.daemon = True
         thread.start()
 
-    def log_all_chat_state(self):
-        """
-        记录全体消息勾选框的状态。
-        此函数不再直接调用，而是通过信号间接调用。
-        """
-        pass
-
     def toggle_all_chat_checkbox(self):
         """
         切换全体消息勾选框的选中状态，并通过F12触发。
@@ -619,7 +640,6 @@ class MainWindow(QMainWindow):
     def setup_hotkey(self):
         """
         设置全局热键F2和F12，按下时调用相应方法。
-        此函数现在只执行热键设置逻辑，不再产生日志。
         """
         keyboard.add_hotkey('f2', self.start_send_thread)
         keyboard.add_hotkey('f12', self.toggle_all_chat_checkbox)
@@ -628,13 +648,8 @@ class MainWindow(QMainWindow):
     def log_message(self, message):
         """
         在GUI日志框中显示消息并记录到日志文件。
-        此函数现在是一个槽（slot），通过信号从其他线程安全地调用。
-        :param message: 要显示的日志消息。
         """
-        # 新增代码：获取当前时间并格式化为 分:秒
         current_time = time.strftime('%M:%S', time.localtime())
-
-        # 构建HTML格式的日志消息
         if "已以管理员身份运行" in message:
             html_message = f"<b>{current_time}</b> - <span style='color:green;'>{message}</span><br>"
         elif "警告：未以管理员身份运行" in message:
@@ -642,30 +657,25 @@ class MainWindow(QMainWindow):
         elif "热键F2和F12已设置" in message:
             html_message = f"<b>{current_time}</b> - <span style='color:blue;'>{message}</span><br>"
         elif message.startswith("<b>") or message.startswith("<span"):
-            # 对于包含HTML标签的特殊消息，保持其原有格式并添加时间戳
             html_message = f"<b>{current_time}</b> - {message}"
         else:
             html_message = f"<b>{current_time}</b> - <span>{message}</span><br>"
 
-        # 确保滚动条在底部
         cursor = self.log_display.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         self.log_display.setTextCursor(cursor)
         self.log_display.insertHtml(html_message)
 
-        # 确保在日志区显示时，滚动条能自动滚动到底部
         if self.log_display.maximumHeight() > 0:
             self.log_display.verticalScrollBar().setValue(self.log_display.verticalScrollBar().maximum())
 
-        # 同时记录到日志文件，这里使用原始的logging配置，因为它通常需要完整的日期时间
         logging.info(message)
 
     def closeEvent(self, event):
         """
         程序退出时清理所有热键。
         """
-        keyboard.unhook_all()
-        logging.info("程序退出，已清除所有热键。")
+        self.cleanup_hotkeys()
         event.accept()
 
 
