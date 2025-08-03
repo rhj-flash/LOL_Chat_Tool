@@ -347,17 +347,14 @@ class MainWindow(QMainWindow):
         # 初始时设置日志区高度为0，使其默认隐藏
         self.log_display.setMaximumHeight(0)
         main_layout.addWidget(self.log_display)
-
         # 将日志光标设置到最开始，避免打开软件时在中间
         self.log_display.moveCursor(QTextCursor.MoveOperation.Start)
 
         # UI元素创建完成后再更新选择器，确保所有控件都已存在
         self.update_message_selector()
-
         self.message_selector.currentIndexChanged.connect(self.display_selected_message)
         self.message_selector.currentIndexChanged.connect(self.reset_message_line_index)
         self.message_selector.currentIndexChanged.connect(self.update_button_states)
-
         self.update_button_states()
 
     # 修改：用于切换日志显示区可见性的方法
@@ -365,12 +362,10 @@ class MainWindow(QMainWindow):
         """
         切换日志显示区的可见性，并更新按钮文本。
         """
-        if self.log_display.maximumHeight() > 0:
-            # 当前已展开，将其收起
+        if self.log_display.maximumHeight() > 0:  # 当前已展开，将其收起
             self.log_display.setMaximumHeight(0)
             self.log_toggle_button.setText("日志▼")
-        else:
-            # 当前已收起，将其展开
+        else:  # 当前已收起，将其展开
             self.log_display.setMaximumHeight(150)  # 设置展开后的高度
             self.log_toggle_button.setText("日志▲")
 
@@ -394,283 +389,206 @@ class MainWindow(QMainWindow):
 
     def update_line_status_label(self):
         """
-        更新消息发送状态标签。
+        更新底部状态栏的文本，显示当前选中消息组和消息行。
         """
         current_index = self.message_selector.currentIndex()
         if self.messages and 0 <= current_index < len(self.messages):
-            message_list = self.messages[current_index]['lines']
-            total_lines = len(message_list)
-            current_line = min(self.message_line_index + 1, total_lines)
-            self.line_status_label.setText(f"当前选中：消息组 {current_index + 1} ({current_line}/{total_lines} 行)")
+            message_group = self.messages[current_index]
+            note = message_group.get('note', f"消息组 {current_index + 1}")
+            total_lines = len(message_group.get('lines', []))
+            self.line_status_label.setText(f"当前选中: {note} ({self.message_line_index + 1}/{total_lines})")
         else:
             self.line_status_label.setText("当前选中：无消息")
 
-    def check_admin(self):
+    def log_message(self, message):
         """
-        检查程序是否以管理员权限运行。此函数现在只执行检查逻辑，不再产生日志。
+        槽函数：在日志显示区域添加一条新消息。
+        :param message: 要显示的日志消息。
         """
-        try:
-            is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
-            # 这里可以保留日志记录到文件，但不再写入GUI
-            logging.info("已以管理员身份运行。" if is_admin else "警告：未以管理员身份运行，热键可能无法在游戏内工作。")
-        except Exception as e:
-            logging.exception(f"检查管理员权限失败: {e}")
+        self.log_display.append(f"<span style='color: #4a4a4a;'>{message}</span>")
 
     def update_message_selector(self):
         """
-        更新消息选择器下拉框的内容，显示消息组的序号和备注。
+        更新消息选择下拉框的内容。
         """
-        self.messages = self.config_manager.get_messages()
         self.message_selector.clear()
         if self.messages:
-            for i, msg_data in enumerate(self.messages):
-                note = msg_data.get('note', f"消息组 {i + 1}")
-                self.message_selector.addItem(f"消息组 {i + 1} - {note}")
-            if self.message_group_index >= len(self.messages):
-                self.message_group_index = max(0, len(self.messages) - 1)
-            self.message_selector.setCurrentIndex(self.message_group_index)
-        self.reset_message_line_index()
-
-    def update_button_states(self):
-        """
-        根据当前UI状态更新三个按钮的启用/禁用状态。
-        """
-        has_messages = bool(self.messages)
-        self.add_message_button.setEnabled(True)
-        self.edit_message_button.setEnabled(has_messages)
-        self.delete_button.setEnabled(has_messages)
+            for i, msg in enumerate(self.messages):
+                note = msg.get('note', f"消息组 {i + 1}")
+                self.message_selector.addItem(note)
+        else:
+            self.message_selector.addItem("无消息")
 
     def display_selected_message(self, index):
         """
-        槽函数，当消息选择器的选择改变时，将选中消息的内容填充到输入框中。
+        根据下拉框选中的索引显示对应的消息内容到预览区。
         """
-        self.message_group_index = index
         if 0 <= index < len(self.messages):
-            selected_message_data = self.messages[index]
-            selected_message_list = selected_message_data['lines']
-            note = selected_message_data['note']
-            message_str = "\n".join(selected_message_list)
-            self.message_input.setPlainText(message_str)
-            self.note_label.setText(f"备注：{note}")
-            self.log_signal.emit(f"已选择消息组: {index + 1} ({note})")
+            selected_message = self.messages[index]
+            self.message_input.setPlainText("\n".join(selected_message.get('lines', [])))
+            self.note_label.setText(f"备注：{selected_message.get('note', '')}")
+            self.message_group_index = index
             self.update_line_status_label()
         else:
             self.message_input.clear()
             self.note_label.setText("备注：")
-            self.log_signal.emit("消息列表为空，已清空预览区。")
-            self.update_line_status_label()
+            self.line_status_label.setText("当前选中：无消息")
+
+    def update_button_states(self):
+        """
+        根据消息列表是否为空来更新按钮的启用状态。
+        """
+        has_messages = bool(self.messages)
+        self.edit_message_button.setEnabled(has_messages)
+        self.delete_button.setEnabled(has_messages)
+        self.message_selector.setEnabled(has_messages)
 
     def add_new_message(self):
         """
-        弹出一个独立的输入对话框，用于添加新消息。
+        处理“添加新消息”按钮的点击事件，弹窗让用户输入新消息。
         """
-        # 1. 输入备注
-        note, ok_note = QInputDialog.getText(self, "添加新消息", "请输入消息备注：")
-        if not ok_note or not note.strip():
-            self.log_signal.emit("备注为空，添加操作已取消。")
-            return
-
-        # 2. 输入消息内容
-        message_str, ok_message = QInputDialog.getMultiLineText(self, "添加新消息", "请输入新消息内容，多行请换行：", "")
-        if not ok_message or not message_str.strip():
-            self.log_signal.emit("消息内容为空，添加操作已取消。")
-            return
-
-        # 3. 添加消息
-        if self.config_manager.add_message(note, message_str):
-            self.update_message_selector()
-            self.message_selector.setCurrentIndex(len(self.messages) - 1)
-            self.log_signal.emit(f"已成功添加新消息:\n备注: {note}\n内容: {message_str}")
-        else:
-            self.log_signal.emit("消息为空或已存在，添加失败。")
+        new_note, ok = QInputDialog.getText(self, "添加新消息", "请输入消息组的备注:")
+        if ok and new_note:
+            new_message_str, ok = QInputDialog.getMultiLineText(self, "添加新消息", "请输入消息内容（可多行）:")
+            if ok and new_message_str:
+                self.config_manager.add_message(new_note, new_message_str)
+                self.messages = self.config_manager.get_messages()  # 重新加载消息列表
+                self.update_message_selector()
+                # 自动选中新添加的消息
+                self.message_selector.setCurrentIndex(len(self.messages) - 1)
+                self.update_button_states()
 
     def edit_selected_message(self):
         """
-        弹出一个独立的输入对话框，预填充当前消息内容，用于编辑。
+        处理“编辑选中消息”按钮的点击事件，弹窗让用户编辑选中消息。
         """
         current_index = self.message_selector.currentIndex()
-        if current_index < 0:
-            self.log_signal.emit("未选择消息，无法编辑。")
-            return
+        if 0 <= current_index < len(self.messages):
+            current_note = self.messages[current_index].get('note', '')
+            current_lines = "\n".join(self.messages[current_index].get('lines', []))
 
-        current_message_data = self.messages[current_index]
-        current_note = current_message_data['note']
-        current_message_list = current_message_data['lines']
-        current_message_str = "\n".join(current_message_list)
-
-        # 1. 编辑备注
-        new_note, ok_note = QInputDialog.getText(self, "编辑选中消息", f"编辑消息组 {current_index + 1} 的备注：",
-                                                 text=current_note)
-        if not ok_note or not new_note.strip():
-            self.log_signal.emit("备注为空，编辑操作已取消。")
-            return
-
-        # 2. 编辑消息内容
-        new_message_str, ok_message = QInputDialog.getMultiLineText(self, "编辑选中消息",
-                                                                    f"编辑消息组 {current_index + 1} 的内容：",
-                                                                    current_message_str)
-        if not ok_message or not new_message_str.strip():
-            self.log_signal.emit("消息内容为空，编辑操作已取消。")
-            return
-
-        # 3. 更新消息
-        if self.config_manager.update_message(current_index, new_note, new_message_str):
-            self.update_message_selector()
-            self.message_selector.setCurrentIndex(current_index)
-            self.log_signal.emit(f"已更新消息组 {current_index + 1}:\n新备注: {new_note}\n新内容: {new_message_str}")
-        else:
-            self.log_signal.emit("更新消息失败。")
+            # 让用户编辑备注
+            new_note, ok = QInputDialog.getText(self, "编辑消息备注", "请输入新备注:", text=current_note)
+            if ok:
+                # 让用户编辑消息内容
+                new_message_str, ok_content = QInputDialog.getMultiLineText(self, "编辑消息内容", "请输入新消息内容:",
+                                                                           text=current_lines)
+                if ok_content:
+                    self.config_manager.edit_message(current_index, new_note, new_message_str)
+                    self.messages = self.config_manager.get_messages()
+                    self.update_message_selector()
+                    self.message_selector.setCurrentIndex(current_index)
+                    self.display_selected_message(current_index)
 
     def delete_selected_message(self):
         """
-        删除选中的消息。
+        处理“删除选中消息”按钮的点击事件，删除选中的消息。
         """
         current_index = self.message_selector.currentIndex()
-        if current_index >= 0:
-            if self.config_manager.delete_message(current_index):
-                self.update_message_selector()
-                self.log_signal.emit("已删除选中消息。")
-                if self.messages:
-                    self.message_selector.setCurrentIndex(0)
-                else:
-                    self.display_selected_message(-1)  # 清空显示
-        else:
-            self.log_signal.emit("未选择消息，无法删除。")
-
-    def send_message(self):
-        """
-        发送消息核心逻辑，所有异常都在此捕获，以保证程序不退出。
-        修改为每次调用只发送当前行的内容，然后移动到下一行。
-        """
-        try:
-            self.log_signal.emit("开始发送消息...")
-            hwnd, is_game = self.window_manager.find_lol_window()
-
-            if not hwnd:
-                self.log_signal.emit("未找到LOL窗口，无法发送消息。操作已终止。")
-                return
-
-            if not is_game:
-                self.window_manager.activate_window(hwnd)
-                self.log_signal.emit("已激活客户端窗口。")
-            else:
-                self.log_signal.emit("检测到对局窗口，将不激活窗口。")
-
-            if not self.messages:
-                self.log_signal.emit("消息列表为空，无法发送。")
-                return
-
-            current_message_data = self.messages[self.message_group_index]
-            current_message_list = current_message_data['lines']
-            current_note = current_message_data['note']
-            total_lines = len(current_message_list)
-
-            if total_lines == 0:
-                self.log_signal.emit(f"消息组 {self.message_group_index + 1} ({current_note}) 为空，无法发送。")
-                return
-
-            if self.message_line_index >= total_lines:
-                self.message_line_index = 0
-
-            line_to_send = current_message_list[self.message_line_index]
-
-            if not line_to_send.strip():
-                self.log_signal.emit(
-                    f"消息组 {self.message_group_index + 1} ({current_note}) 的第 {self.message_line_index + 1} 行为空行，跳过发送。")
-            else:
-                self.log_signal.emit(
-                    f"准备发送消息组 {self.message_group_index + 1} ({current_note}) 的第 {self.message_line_index + 1} 行: {line_to_send}")
-
-                prefix = "/all " if self.all_chat_checkbox.isChecked() else ""
-                final_line = prefix + line_to_send
-
-                self.input_simulator.send_message(hwnd, final_line, is_game)
-
-            self.message_line_index = (self.message_line_index + 1) % total_lines
-            self.update_line_status_label()
-
-        except Exception as e:
-            self.log_signal.emit(f"发送消息失败，发生异常: {str(e)}")
-            logging.exception("发送消息时发生未处理的异常")
-        finally:
-            self.log_signal.emit("消息发送过程结束。")
-
-    def start_send_thread(self):
-        """
-        创建一个新线程来执行 send_message 方法，避免阻塞GUI。
-        """
-        thread = threading.Thread(target=self.send_message)
-        thread.daemon = True
-        thread.start()
-
-    def log_all_chat_state(self):
-        """
-        记录全体消息勾选框的状态。
-        此函数不再直接调用，而是通过信号间接调用。
-        """
-        pass
-
-    def toggle_all_chat_checkbox(self):
-        """
-        切换全体消息勾选框的选中状态，并通过F12触发。
-        """
-        self.all_chat_checkbox.setChecked(not self.all_chat_checkbox.isChecked())
+        if 0 <= current_index < len(self.messages):
+            self.config_manager.delete_message(current_index)
+            self.messages = self.config_manager.get_messages()
+            self.update_message_selector()
+            self.message_selector.setCurrentIndex(min(current_index, len(self.messages) - 1))
+            self.update_button_states()
 
     def setup_hotkey(self):
         """
-        设置全局热键F2和F12，按下时调用相应方法。
-        此函数现在只执行热键设置逻辑，不再产生日志。
+        设置全局热键，用于触发发送消息。
         """
-        keyboard.add_hotkey('f2', self.start_send_thread)
-        keyboard.add_hotkey('f12', self.toggle_all_chat_checkbox)
-        logging.info("热键F2和F12已设置。")
+        hotkey_start_send = self.config_manager.get_config("hotkey_start_send", "f2")
+        hotkey_all_chat_toggle = self.config_manager.get_config("hotkey_all_chat_toggle", "f12")
 
-    def log_message(self, message):
-        """
-        在GUI日志框中显示消息并记录到日志文件。
-        此函数现在是一个槽（slot），通过信号从其他线程安全地调用。
-        :param message: 要显示的日志消息。
-        """
-        # 新增代码：获取当前时间并格式化为 分:秒
-        current_time = time.strftime('%M:%S', time.localtime())
+        try:
+            keyboard.add_hotkey(hotkey_start_send, self.send_selected_message_hotkey)
+            keyboard.add_hotkey(hotkey_all_chat_toggle, self.toggle_all_chat_hotkey)
+            self.log_signal.emit(f"热键 '{hotkey_start_send}' 和 '{hotkey_all_chat_toggle}' 已成功设置。")
+        except Exception as e:
+            self.log_signal.emit(f"设置热键失败: {e}。请尝试以管理员身份运行。")
 
-        # 构建HTML格式的日志消息
-        if "已以管理员身份运行" in message:
-            html_message = f"<b>{current_time}</b> - <span style='color:green;'>{message}</span><br>"
-        elif "警告：未以管理员身份运行" in message:
-            html_message = f"<b>{current_time}</b> - <span style='color:red;'>{message}</span><br>"
-        elif "热键F2和F12已设置" in message:
-            html_message = f"<b>{current_time}</b> - <span style='color:blue;'>{message}</span><br>"
-        elif message.startswith("<b>") or message.startswith("<span"):
-            # 对于包含HTML标签的特殊消息，保持其原有格式并添加时间戳
-            html_message = f"<b>{current_time}</b> - {message}"
+    def toggle_all_chat_hotkey(self):
+        """
+        热键回调函数：切换 /all 聊天模式。
+        """
+        # 如果不是主线程，使用信号来更新GUI
+        if self.thread() != QApplication.instance().thread():
+            self.all_chat_checkbox.setCheckState(Qt.CheckState.Unchecked if self.all_chat_checkbox.isChecked() else Qt.CheckState.Checked)
         else:
-            html_message = f"<b>{current_time}</b> - <span>{message}</span><br>"
+            self.all_chat_checkbox.setChecked(not self.all_chat_checkbox.isChecked())
 
-        # 确保滚动条在底部
-        cursor = self.log_display.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        self.log_display.setTextCursor(cursor)
-        self.log_display.insertHtml(html_message)
+    def check_admin(self):
+        """
+        检查程序是否以管理员身份运行，并给出提示。
+        """
+        is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+        if not is_admin:
+            self.log_signal.emit("警告：未以管理员身份运行，热键可能无法在游戏内工作。")
 
-        # 确保在日志区显示时，滚动条能自动滚动到底部
-        if self.log_display.maximumHeight() > 0:
-            self.log_display.verticalScrollBar().setValue(self.log_display.verticalScrollBar().maximum())
+    # 这部分代码是关键修改，请仔细检查
+    def send_selected_message_hotkey(self):
+        """
+        热键回调函数：发送下拉框中选中的整个消息组。
+        此方法会在单独的线程中执行，以避免阻塞主GUI。
+        """
+        # 在新线程中执行，以确保UI不会因为等待输入而冻结
+        thread = threading.Thread(target=self._send_all_messages_in_group_thread)
+        thread.daemon = True
+        thread.start()
 
-        # 同时记录到日志文件，这里使用原始的logging配置，因为它通常需要完整的日期时间
-        logging.info(message)
+    def _send_all_messages_in_group_thread(self):
+        """
+        后台线程函数：发送当前选中的整个消息组。
+        """
+        # 禁用热键，防止重复触发
+        keyboard.unhook_all()
+        try:
+            current_index = self.message_selector.currentIndex()
+            if not self.messages or not (0 <= current_index < len(self.messages)):
+                self.log_signal.emit("没有可发送的消息组。")
+                return
+
+            message_group = self.messages[current_index]
+            note = message_group.get('note', f"消息组 {current_index + 1}")
+            lines = message_group.get('lines', [])
+
+            self.log_signal.emit(f"准备发送消息组：'{note}'...")
+
+            # 激活 LOL 窗口
+            self.window_manager.activate_lol_window()
+
+            # 检查是否需要发送 /all
+            is_all_chat = self.all_chat_checkbox.isChecked()
+
+            for i, line in enumerate(lines):
+                # 确保在发送每条消息前都打开聊天框
+                self.input_simulator.open_chat_and_send_message(line, is_all_chat)
+                # 更新UI状态，通过信号回到主线程
+                self.log_signal.emit(f"已发送消息({i + 1}/{len(lines)})：{line}")
+                # 增加延时，防止输入过快
+                time.sleep(0.5)
+
+            self.log_signal.emit(f"消息组 '{note}' 发送完毕。")
+            self.message_line_index = 0
+            self.update_line_status_label()
+
+        except Exception as e:
+            self.log_signal.emit(f"发送消息时发生错误: {str(e)}")
+            logging.exception("发送消息时发生异常")
+        finally:
+            # 重新设置热键
+            self.setup_hotkey()
 
     def closeEvent(self, event):
         """
-        程序退出时清理所有热键。
+        重写 closeEvent，确保在程序关闭时解绑热键。
         """
         keyboard.unhook_all()
-        logging.info("程序退出，已清除所有热键。")
-        event.accept()
+        logging.info("程序已关闭，热键已解绑。")
+        super().closeEvent(event)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app = QApplication(sys.argv)
-    main_window = MainWindow()
-    main_window.show()
+    window = MainWindow()
+    window.show()
     sys.exit(app.exec())
