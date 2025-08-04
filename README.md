@@ -1,4 +1,5 @@
 # LOL友好交流器
+## EXE文件：[https://github.com/rhj-flash/XingYun-1.0/blob/master/Xingyun.exe](https://github.com/rhj-flash/XingYun-1.0/blob/master/Xingyun.exe)
 
 一个基于Python和PyQt6的桌面工具，旨在帮助玩家在《英雄联盟》对局中快速发送预设的友好（或“骚话”）聊天信息。该工具通过模拟键盘输入，支持在游戏内外（大厅和对局中）一键发送消息，减少打字时间，提升游戏体验。
 
@@ -12,20 +13,21 @@
 
 ## 演示
 
-在这里，您可以放置工具的实际运行截图或GIF动图，直观地展示工具的功能。
+### 主界面截图1
 
-### 主界面截图
+![主界面截图](https://github.com/rhj-flash/LOL_Chat_Tool/blob/master/example_photo/3.gif)
 
-![主界面截图](https://placehold.co/600x400/png)
+
+### 主界面截图2
+
+![主界面截图](https://github.com/rhj-flash/LOL_Chat_Tool/blob/master/example_photo/2.jpg)
 
 ### 游戏内使用演示
 
-![游戏内使用演示](https://placehold.co/600x400/png)
+![游戏内使用演示](https://github.com/rhj-flash/LOL_Chat_Tool/blob/master/example_photo/1.jpg)
 
-## 安装与使用
 
-### 1. 克隆仓库
 
-```bash
-git clone [https://github.com/your-username/your-repository.git](https://github.com/your-username/your-repository.git)
-cd your-repository
+
+
+
