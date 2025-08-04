@@ -1,4 +1,4 @@
-# LOL友好交流器
+# LOL友好交流器[注意管理员身份运行软件]
 ## EXE文件：[https://github.com/rhj-flash/LOL_Chat_Tool/blob/master/LOL%E5%8F%8B%E5%A5%BD%E4%BA%A4%E6%B5%81%E5%99%A8.exe]
 
 一个基于Python和PyQt6的桌面工具，旨在帮助玩家在《英雄联盟》对局中快速发送预设的友好（或“骚话”）聊天信息。该工具通过模拟键盘输入，支持在游戏内外（大厅和对局中）一键发送消息，减少打字时间，提升游戏体验。
