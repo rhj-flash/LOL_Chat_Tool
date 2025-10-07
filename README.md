@@ -1,5 +1,17 @@
+<div align="center">
+
+[![GitHub](https://img.shields.io/badge/GitHub-rhj--flash-181717?style=for-the-badge&logo=github)](https://github.com/rhj-flash)
+[![邮箱](https://img.shields.io/badge/邮箱-rhjflash@gmail.com-red?style=for-the-badge&logo=gmail)](mailto:rhjflash@gmail.com)
+[![访问量](https://komarev.com/ghpvc/?username=rhj-flash&color=blue&style=for-the-badge)](https://github.com/rhj-flash)
+[![GitHub Stars](https://img.shields.io/github/stars/rhj-flash?style=for-the-badge&logo=github&color=yellow)](https://github.com/rhj-flash)
+[![GitHub Followers](https://img.shields.io/github/followers/rhj-flash?style=for-the-badge&logo=github&color=green)](https://github.com/rhj-flash)
+
+</div>
+
 # LOL友好交流器[注意管理员身份运行软件]
 ## EXE文件：[https://github.com/rhj-flash/LOL_Chat_Tool/blob/master/LOL%E5%8F%8B%E5%A5%BD%E4%BA%A4%E6%B5%81%E5%99%A8.exe]
+
+
 
 一个基于Python和PyQt6的桌面工具，旨在帮助玩家在《英雄联盟》对局中快速发送预设的友好（或“骚话”）聊天信息。该工具通过模拟键盘输入，支持在游戏内外（大厅和对局中）一键发送消息，减少打字时间，提升游戏体验。
 
